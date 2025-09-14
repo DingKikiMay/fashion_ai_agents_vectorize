@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-双表向量化运行脚本
-同时创建两个表并导入向量化数据到PostgreSQL
+统一表向量化运行脚本
+从数据库products表获取数据并存储到统一的product_vectors表
 """
 
 import asyncio
@@ -18,19 +18,9 @@ from app.core.logging import app_logger
 
 
 async def run_vectorization():
-    """运行双表向量化并存储到数据库"""
-    print("开始双表向量化处理...")
-    print("将同时创建 product_vectors 和 product_vector_storage 两个表")
-    
-    # 检查SQL文件
-    sql_files = ["data/1_utf8.sql", "data/2_utf8.sql"]
-    existing_files = [f for f in sql_files if os.path.exists(f)]
-    
-    if not existing_files:
-        print("没有找到SQL文件，请确保data目录下有1_utf8.sql和2_utf8.sql")
-        return
-    
-    print(f"找到SQL文件: {existing_files}")
+    """运行统一表向量化并存储到数据库"""
+    print("开始统一表向量化处理...")
+    print("将从数据库products表获取数据并存储到product_vectors表")
     
     try:
         # 创建服务
@@ -38,21 +28,20 @@ async def run_vectorization():
         embedding_service = AliyunEmbeddingService()
         vector_storage = VectorStorageService()
         
-        # 1. 导入产品数据
-        print("\n[步骤1] 导入产品数据...")
-        products = data_importer.get_products_for_vectorization(existing_files)
+        # 1. 从数据库获取产品数据
+        print("\n[步骤1] 从数据库获取产品数据...")
+        products = data_importer.get_products_from_database()
 
         if not products:
             print("没有找到有效的产品数据")
             return
 
-        print(f"成功导入 {len(products)} 个产品")
-        print("注意：请确保已执行 data/vectors/create_dual_tables.sql 创建两个表")
+        print(f"成功获取 {len(products)} 个产品")
+        print("注意：请确保已执行 data/vectors/create_unified_table.sql 创建统一表")
         
-        # 2. 批量向量化并存储到两个表
-        print("\n[步骤2] 开始向量化并存储到两个表...")
-        print("  - product_vectors: 存储商品信息和tag字段（用于RAG筛选）")
-        print("  - product_vector_storage: 存储1024维向量和原始数据")
+        # 2. 批量向量化并存储到统一表
+        print("\n[步骤2] 开始向量化并存储到统一表...")
+        print("  - product_vectors: 存储商品信息、tag字段和向量数据")
         success_count = 0
         failed_count = 0
         
@@ -61,18 +50,18 @@ async def run_vectorization():
                 # 构建文本描述
                 text_description = f"{product.get('product_name', '')} {product.get('description', '')}"
                 
-                # 提取tag信息（从description中解析）
-                scene = product.get("scene", "")
+                # 提取tag信息（从数据中解析）
+                scene = product.get("scene", "casual")
                 color = product.get("color", "")
-                style = product.get("style", "")
-                fit = product.get("fit", "")
-                material = product.get("material", "")
-                season = product.get("season", "")
-                pattern = product.get("pattern", "")
+                style = product.get("style", "casual")
+                fit = product.get("fit", "regular")
+                material = product.get("material", "cotton")
+                season = product.get("season", "all")
+                pattern = product.get("pattern", "solid")
                 
-                # 存储到两个表
+                # 存储到统一表
                 success = await vector_storage.store_product_vectors(
-                    product_id=product["product_id"],
+                    product_id=product["id"],
                     product_name=product["product_name"],
                     description=text_description,
                     image_url=product.get("image_gif", ""),
@@ -92,10 +81,10 @@ async def run_vectorization():
                 
                 if success:
                     success_count += 1
-                    print(f"[成功] 产品 {product['product_id']}: {product['product_name']}")
+                    print(f"[成功] 产品 {product['id']}: {product['product_name']}")
                 else:
                     failed_count += 1
-                    print(f"[失败] 产品 {product['product_id']}: 存储失败")
+                    print(f"[失败] 产品 {product['id']}: 存储失败")
                 
                 # 每处理10个产品显示进度
                 if (i + 1) % 10 == 0:
@@ -106,7 +95,7 @@ async def run_vectorization():
                 
             except Exception as e:
                 failed_count += 1
-                print(f"[失败] 产品 {product.get('product_id')}: {e}")
+                print(f"[失败] 产品 {product.get('id')}: {e}")
         
         # 3. 显示结果
         print(f"\n=== 向量化完成 ===")
@@ -119,9 +108,11 @@ async def run_vectorization():
         print(f"  - 成功处理: {success_count} 个商品")
         print(f"  - 失败数量: {failed_count} 个商品")
         
-        print(f"\n双表向量化完成！数据已存储到两个表中：")
-        print(f"  - product_vector_storage: 存储1024维向量和原始数据（用于向量搜索）")
-        print(f"  - product_vectors: 存储商品信息和tag字段（用于RAG筛选）")
+        print(f"\n统一表向量化完成！数据已存储到product_vectors表中：")
+        print(f"  - 商品基本信息：名称、描述、图片URL等")
+        print(f"  - Tag字段：scene、color、style等（用于RAG粗筛）")
+        print(f"  - 向量字段：text_vector、image_vector（用于RAG精筛）")
+        print(f"  - 原始数据：JSON格式存储的原始信息")
         print(f"\n现在您可以使用RAG系统进行精确筛选和向量相似性搜索！")
             
     except Exception as e:

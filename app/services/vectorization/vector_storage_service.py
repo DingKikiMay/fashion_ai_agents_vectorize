@@ -7,10 +7,8 @@ import json
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from pgvector.sqlalchemy import Vector
 
 from app.models.database import get_db
-from app.models.vector_storage import ProductVectorStorage
 from app.models.product_vectors import ProductVectors
 from app.services.vectorization.embedding_service import AliyunEmbeddingService
 from app.core.logging import app_logger
@@ -41,7 +39,7 @@ class VectorStorageService:
         season: str = None,
         pattern: str = None
     ) -> bool:
-        """存储商品向量数据到两个表
+        """存储商品向量数据到统一表
         
         Args:
             product_id: 商品ID
@@ -80,53 +78,32 @@ class VectorStorageService:
             
             # 存储到数据库
             with next(get_db()) as db:
-                # 1. 存储到 product_vector_storage 表（1024维向量）
-                existing_storage = db.query(ProductVectorStorage).filter(
-                    ProductVectorStorage.product_id == product_id
-                ).first()
-                
-                if existing_storage:
-                    # 更新现有记录
-                    existing_storage.text_vector = text_vector
-                    existing_storage.image_vector = image_vector
-                    existing_storage.original_data = original_data
-                    existing_storage.vector_status = 3  # 全部完成
-                else:
-                    # 创建新记录
-                    vector_record = ProductVectorStorage(
-                        product_id=product_id,
-                        text_vector=text_vector,
-                        image_vector=image_vector,
-                        original_data=original_data,
-                        vector_status=3  # 全部完成
-                    )
-                    db.add(vector_record)
-                
-                # 2. 存储到 product_vectors 表（包含tag字段，用于RAG筛选）
-                existing_vectors = db.query(ProductVectors).filter(
+                # 查询现有记录
+                existing_record = db.query(ProductVectors).filter(
                     ProductVectors.product_id == product_id
                 ).first()
                 
-                if existing_vectors:
+                if existing_record:
                     # 更新现有记录
-                    existing_vectors.product_name = product_name
-                    existing_vectors.description = description
-                    existing_vectors.image_gif = image_url
-                    existing_vectors.category_id = category_id
-                    existing_vectors.brand = brand
-                    existing_vectors.price = price
-                    existing_vectors.is_recommended = is_recommended
-                    existing_vectors.product_status = product_status
-                    existing_vectors.text_embedding = text_vector if text_vector is not None else None
-                    existing_vectors.image_embedding = image_vector if image_vector is not None else None
-                    existing_vectors.vector_status = 3
-                    existing_vectors.scene = scene
-                    existing_vectors.color = color
-                    existing_vectors.style = style
-                    existing_vectors.fit = fit
-                    existing_vectors.material = material
-                    existing_vectors.season = season
-                    existing_vectors.pattern = pattern
+                    existing_record.product_name = product_name
+                    existing_record.description = description
+                    existing_record.image_gif = image_url
+                    existing_record.category_id = category_id
+                    existing_record.brand = brand
+                    existing_record.price = price
+                    existing_record.is_recommended = is_recommended
+                    existing_record.product_status = product_status
+                    existing_record.scene = scene
+                    existing_record.color = color
+                    existing_record.style = style
+                    existing_record.fit = fit
+                    existing_record.material = material
+                    existing_record.season = season
+                    existing_record.pattern = pattern
+                    existing_record.text_vector = json.dumps(text_vector) if text_vector is not None else None
+                    existing_record.image_vector = json.dumps(image_vector) if image_vector is not None else None
+                    existing_record.original_data = original_data
+                    existing_record.vector_status = 3
                 else:
                     # 创建新记录
                     vectors_record = ProductVectors(
@@ -139,21 +116,22 @@ class VectorStorageService:
                         price=price,
                         is_recommended=is_recommended,
                         product_status=product_status,
-                        text_embedding=text_vector if text_vector is not None else None,
-                        image_embedding=image_vector if image_vector is not None else None,
-                        vector_status=3,
                         scene=scene,
                         color=color,
                         style=style,
                         fit=fit,
                         material=material,
                         season=season,
-                        pattern=pattern
+                        pattern=pattern,
+                        text_vector=json.dumps(text_vector) if text_vector is not None else None,
+                        image_vector=json.dumps(image_vector) if image_vector is not None else None,
+                        original_data=original_data,
+                        vector_status=3
                     )
                     db.add(vectors_record)
                 
                 db.commit()
-                app_logger.info(f"成功存储商品 {product_id} 的向量数据到两个表")
+                app_logger.info(f"成功存储商品 {product_id} 的向量数据到统一表")
                 return True
                 
         except Exception as e:
